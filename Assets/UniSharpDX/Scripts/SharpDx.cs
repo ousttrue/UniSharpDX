@@ -13,5 +13,8 @@ public class SharpDx : MonoBehaviour
             Debug.Log(desc.Width);
             int a = 0;
         }
+
+        var backBufferDesc = new SharpDX.DXGI.ModeDescription(1920, 1080
+            , new SharpDX.DXGI.Rational(60, 1), SharpDX.DXGI.Format.R8G8B8A8_UNorm);
     }
 }
