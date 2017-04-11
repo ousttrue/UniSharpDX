@@ -94,9 +94,9 @@ class RenderAPI_D3D11: System.IDisposable
 
     public static RenderAPI_D3D11 Create(UnityEngine.Texture2D tex, UnityEngine.Mesh mesh)
     {
-        var dxTexture = new SharpDX.Direct3D11.Texture2D(tex.GetNativeTexturePtr());
+        using (var dxTexture = new SharpDX.Direct3D11.Texture2D(tex.GetNativeTexturePtr()))
         {
-            var d3d11=new RenderAPI_D3D11(dxTexture.Device);
+            var d3d11 = new RenderAPI_D3D11(dxTexture.Device);
             d3d11.SetTextureFromUnity(tex.GetNativeTexturePtr(), tex.width, tex.height);
             d3d11.SetMeshBuffersFromUnity(mesh.GetNativeVertexBufferPtr(0)
                 , mesh.vertexCount
@@ -151,7 +151,9 @@ class RenderAPI_D3D11: System.IDisposable
 
     bool GetUsesReverseZ()
     {
-        return m_Device.FeatureLevel >= SharpDX.Direct3D.FeatureLevel.Level_10_0;
+        var level = m_Device.FeatureLevel;
+        var use=level>= SharpDX.Direct3D.FeatureLevel.Level_10_0;
+        return use;
     }
 
     public void DrawSimpleTriangles(float[] worldMatrix, int triangleCount, MyVertex[] verticesFloat3Byte4)
@@ -197,7 +199,7 @@ class RenderAPI_D3D11: System.IDisposable
 
     public void EndModifyTexture(System.IntPtr textureHandle, int textureWidth, int textureHeight, int rowPitch, byte[] dataPtr)
     {
-        var d3dtex = new SharpDX.Direct3D11.Texture2D(textureHandle);
+        using (var d3dtex = new SharpDX.Direct3D11.Texture2D(textureHandle))
         {
             var ctx = m_Device.ImmediateContext;
             // Update texture data, and free the memory buffer
@@ -211,21 +213,18 @@ class RenderAPI_D3D11: System.IDisposable
         )
     {
         var d3dbuf = new Buffer(bufferHandle);
+        //using (var d3dbuf = new Buffer(bufferHandle))
         {
             var desc = d3dbuf.Description;
             var ctx = m_Device.ImmediateContext;
+            var padding = getPadding(desc.SizeInBytes);
 
-            SharpDX.DataStream stream;
-            ctx.MapSubresource(d3dbuf, 0
-                , MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None, out stream);
+            var mapped =ctx.MapSubresource(d3dbuf, 0
+                , MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
 
-            if (stream != null)
+            using(var stream=new SharpDX.DataStream(mapped.DataPointer, desc.SizeInBytes, false, true))
             {
-                using (stream)
-                {
-                    var padding = getPadding(desc.SizeInBytes);
-                    callback(stream, padding);
-                }
+                callback(stream, padding);
             }
 
             ctx.UnmapSubresource(d3dbuf, 0);

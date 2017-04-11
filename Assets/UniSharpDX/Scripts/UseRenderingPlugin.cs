@@ -69,7 +69,10 @@ public class UseRenderingPlugin : MonoBehaviour
                     m_plugin.OnRenderEvent(eventID);
                 }
             });
+
+            // gcで関数ポインタのアドレスが移動しないように
             m_onRenderEventHandle=GCHandle.Alloc(m_onRenderEvent);
+
             m_p = Marshal.GetFunctionPointerForDelegate(m_onRenderEvent);
         }
         return m_p;
