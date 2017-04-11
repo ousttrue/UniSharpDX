@@ -1,8 +1,10 @@
 ﻿using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using System.Collections.Generic;
+using UnityEngine;
 
 
+/*
 static class DxExtensions
 {
     public static SharpDX.Vector3 ToDx(this UnityEngine.Vector3 v)
@@ -14,6 +16,7 @@ static class DxExtensions
         return new SharpDX.Vector2(v.x, v.y);
     }
 }
+*/
 
 
 struct MyVertex
@@ -33,9 +36,9 @@ struct MyVertex
 
 struct MeshVertex
 {
-    public SharpDX.Vector3 pos;
-    public SharpDX.Vector3 normal;
-    public SharpDX.Vector2 uv;
+    public UnityEngine.Vector3 pos;
+    public UnityEngine.Vector3 normal;
+    public UnityEngine.Vector2 uv;
 };
 
 
@@ -142,9 +145,9 @@ class RenderAPI_D3D11: System.IDisposable
         {
             m_VertexSource.Add(new MeshVertex
             {
-                pos = sourceVertices[i].ToDx(),
-                normal = sourceNormals[i].ToDx(),
-                uv = sourceUVs[i].ToDx(),
+                pos = sourceVertices[i],
+                normal = sourceNormals[i],
+                uv = sourceUVs[i],
             });
         }
     }
@@ -209,7 +212,7 @@ class RenderAPI_D3D11: System.IDisposable
 
     public void BeginModifyVertexBuffer(System.IntPtr bufferHandle
         , System.Func<int, byte[]> getPadding
-        , System.Action<SharpDX.DataStream, byte[]> callback
+        , System.Action<System.IntPtr, int, byte[]> callback
         )
     {
         var d3dbuf = new Buffer(bufferHandle);
@@ -222,10 +225,7 @@ class RenderAPI_D3D11: System.IDisposable
             var mapped =ctx.MapSubresource(d3dbuf, 0
                 , MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
 
-            using(var stream=new SharpDX.DataStream(mapped.DataPointer, desc.SizeInBytes, false, true))
-            {
-                callback(stream, padding);
-            }
+            callback(mapped.DataPointer, mapped.RowPitch, padding);
 
             ctx.UnmapSubresource(d3dbuf, 0);
         }
@@ -384,19 +384,22 @@ class RenderAPI_D3D11: System.IDisposable
              return new byte[stride - (3 + 3 + 2) * 4];
          };
 
-        System.Action<SharpDX.DataStream, byte[]> callback = (stream, padding) =>
+        System.Action<System.IntPtr, int, byte[]> callback = (ptr, size, padding) =>
          {
-             // modify vertex Y position with several scrolling sine waves,
-             // copy the rest of the source data unmodified
-             for (int i = 0; i < vertexCount; ++i)
+             using (var stream = new SharpDX.DataStream(ptr, size, false, true))
              {
-                 var src = m_VertexSource[i];
-                 stream.Write(new SharpDX.Vector3(src.pos.X
-                     , src.pos.Y + UnityEngine.Mathf.Sin(src.pos[0] * 1.1f + t) * 0.4f + UnityEngine.Mathf.Sin(src.pos[2] * 0.9f - t) * 0.3f
-                     , src.pos.Z));
-                 stream.Write(src.normal);
-                 stream.Write(src.uv);
-                 stream.Write(padding, 0, padding.Length);
+                 // modify vertex Y position with several scrolling sine waves,
+                 // copy the rest of the source data unmodified
+                 for (int i = 0; i < vertexCount; ++i)
+                 {
+                     var src = m_VertexSource[i];
+                     stream.Write(src.pos.x);
+                     stream.Write(src.pos.y + UnityEngine.Mathf.Sin(src.pos[0] * 1.1f + t) * 0.4f + UnityEngine.Mathf.Sin(src.pos[2] * 0.9f - t) * 0.3f);
+                     stream.Write(src.pos.z);
+                     stream.Write(src.normal);
+                     stream.Write(src.uv);
+                     stream.Write(padding, 0, padding.Length);
+                 }
              }
          };
 
@@ -416,7 +419,9 @@ class RenderAPI_D3D11: System.IDisposable
         }
         catch (System.Exception ex)
         {
+#if !NETFX_CORE
             System.Console.WriteLine(ex);
+#endif
         }
     }
 
