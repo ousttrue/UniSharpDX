@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Runtime.InteropServices;
 using UnityEngine;
@@ -5,14 +6,27 @@ using UnityEngine;
 
 public class UseRenderingPlugin : MonoBehaviour
 {
-    IEnumerator Start()
+    RenderAPI_D3D11 m_plugin;
+    private void OnApplicationQuit()
     {
-        CreateTextureAndPassToPlugin();
-        SendMeshBuffersToPlugin();
-        yield return StartCoroutine("CallPluginAtEndOfFrames");
+        if (m_plugin != null)
+        {
+            m_plugin.Dispose();
+            m_plugin = null;
+        }
     }
 
-    private void CreateTextureAndPassToPlugin()
+    void Start()
+    {
+        var tex=CreateTextureAndPassToPlugin();
+        var mesh=SendMeshBuffersToPlugin();
+
+        m_plugin = RenderAPI_D3D11.Create(tex, mesh);
+
+        StartCoroutine(CallPluginAtEndOfFrames());
+    }
+
+    private Texture2D CreateTextureAndPassToPlugin()
     {
         // Create a texture
         Texture2D tex = new Texture2D(256, 256, TextureFormat.ARGB32, false);
@@ -24,11 +38,10 @@ public class UseRenderingPlugin : MonoBehaviour
         // Set texture onto our material
         GetComponent<Renderer>().material.mainTexture = tex;
 
-        // Pass texture pointer to the plugin
-        Impl.SetTextureFromUnity(tex.GetNativeTexturePtr(), tex.width, tex.height);
+        return tex;
     }
 
-    private void SendMeshBuffersToPlugin()
+    private Mesh SendMeshBuffersToPlugin()
     {
         var filter = GetComponent<MeshFilter>();
         var mesh = filter.mesh;
@@ -37,25 +50,30 @@ public class UseRenderingPlugin : MonoBehaviour
         // by default they are immutable and only GPU-readable).
         mesh.MarkDynamic();
 
-        // However, mesh being dynamic also means that the CPU on most platforms can not
-        // read from the vertex buffer. Our plugin also wants original mesh data,
-        // so let's pass it as pointers to regular C# arrays.
-        // This bit shows how to pass array pointers to native plugins without doing an expensive
-        // copy: you have to get a GCHandle, and get raw address of that.
-        var vertices = mesh.vertices;
-        var normals = mesh.normals;
-        var uvs = mesh.uv;
-        GCHandle gcVertices = GCHandle.Alloc(vertices, GCHandleType.Pinned);
-        GCHandle gcNormals = GCHandle.Alloc(normals, GCHandleType.Pinned);
-        GCHandle gcUV = GCHandle.Alloc(uvs, GCHandleType.Pinned);
-
-        Impl.SetMeshBuffersFromUnity(mesh.GetNativeVertexBufferPtr(0), mesh.vertexCount, gcVertices.AddrOfPinnedObject(), gcNormals.AddrOfPinnedObject(), gcUV.AddrOfPinnedObject());
-
-        gcVertices.Free();
-        gcNormals.Free();
-        gcUV.Free();
+        return mesh;
     }
 
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate void OnRenderEventFunc(int eventID);
+    OnRenderEventFunc m_onRenderEvent;
+    System.IntPtr m_p;
+    GCHandle m_onRenderEventHandle;
+    public System.IntPtr GetRenderEventFunc()
+    {
+        if (m_onRenderEvent == null)
+        {
+            m_onRenderEvent = new OnRenderEventFunc(eventID=>
+            {
+                if (m_plugin != null)
+                {
+                    m_plugin.OnRenderEvent(eventID);
+                }
+            });
+            m_onRenderEventHandle=GCHandle.Alloc(m_onRenderEvent);
+            m_p = Marshal.GetFunctionPointerForDelegate(m_onRenderEvent);
+        }
+        return m_p;
+    }
 
     private IEnumerator CallPluginAtEndOfFrames()
     {
@@ -64,14 +82,19 @@ public class UseRenderingPlugin : MonoBehaviour
             // Wait until all frame rendering is done
             yield return new WaitForEndOfFrame();
 
+            if(m_plugin == null)
+            {
+                break;
+            }
+
             // Set time for the plugin
-            Impl.SetTimeFromUnity(Time.timeSinceLevelLoad);
+            m_plugin.SetTimeFromUnity(Time.timeSinceLevelLoad);
 
             // Issue a plugin event with arbitrary integer identifier.
             // The plugin can distinguish between different
             // things it needs to do based on this ID.
             // For our simple plugin, it does not matter which ID we pass here.
-            GL.IssuePluginEvent(Impl.GetRenderEventFunc(), 1);
+            GL.IssuePluginEvent(GetRenderEventFunc(), 1);
         }
     }
 }
