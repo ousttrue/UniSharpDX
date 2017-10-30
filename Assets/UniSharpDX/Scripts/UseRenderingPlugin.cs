@@ -53,6 +53,12 @@ public class UseRenderingPlugin : MonoBehaviour
         return mesh;
     }
 
+    [DllImport("mono")]
+    static extern IntPtr mono_thread_current();
+
+    [DllImport("mono")]
+    static extern IntPtr mono_thread_detach(IntPtr p);
+
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     public delegate void OnRenderEventFunc(int eventID);
     OnRenderEventFunc m_onRenderEvent;
@@ -64,9 +70,16 @@ public class UseRenderingPlugin : MonoBehaviour
         {
             m_onRenderEvent = new OnRenderEventFunc(eventID=>
             {
-                if (m_plugin != null)
+                try
                 {
-                    m_plugin.OnRenderEvent(eventID);
+                    if (m_plugin != null)
+                    {
+                        m_plugin.OnRenderEvent(eventID);
+                    }
+                }
+                finally
+                {
+                    mono_thread_detach(mono_thread_current());
                 }
             });
 
