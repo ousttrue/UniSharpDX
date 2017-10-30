@@ -63,7 +63,6 @@ public class UseRenderingPlugin : MonoBehaviour
     public delegate void OnRenderEventFunc(int eventID);
     OnRenderEventFunc m_onRenderEvent;
     System.IntPtr m_p;
-    GCHandle m_onRenderEventHandle;
     public System.IntPtr GetRenderEventFunc()
     {
         if (m_onRenderEvent == null)
@@ -82,9 +81,6 @@ public class UseRenderingPlugin : MonoBehaviour
                     mono_thread_detach(mono_thread_current());
                 }
             });
-
-            // gcで関数ポインタのアドレスが移動しないように
-            m_onRenderEventHandle=GCHandle.Alloc(m_onRenderEvent);
 
             m_p = Marshal.GetFunctionPointerForDelegate(m_onRenderEvent);
         }
